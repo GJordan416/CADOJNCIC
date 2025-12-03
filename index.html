@@ -1,0 +1,249 @@
+import React, { useEffect, useMemo, useState } from "react";
+
+/***********************************************************
+  MOTOROLA FLEX‑STYLE NCIC/DMV TERMINAL (SINGLE‑FILE VERSION)
+  — Includes: Person profile, history (citations, warnings,
+    warrants, arrests, trespass notices, court orders), and
+    active LE flags. LocalStorage persistence for records.
+***********************************************************/
+
+// ==========================
+//  SAMPLE DATA STRUCTURE
+// ==========================
+interface HistoryEntry {
+  type: "Citation" | "Warning" | "Warrant" | "Arrest" | "Trespass" | "CourtOrder";
+  date: string;
+  details: string;
+}
+
+interface PersonRecord {
+  id: string;
+  name: string;
+  dob?: string;
+  dl?: string;
+  plate?: string;
+  state?: string;
+  ssn?: string;
+  sex?: string;
+  race?: string;
+  flags?: string[];
+  history?: HistoryEntry[];
+}
+
+// NOTE: User will manually expand this object if desired
+const sampleRecords: PersonRecord[] = [
+  {
+    id: "NCIC-0001",
+    name: "Moe LEster",
+    dob: "N/A",
+    dl: "S99881234",
+    plate: "0LHR098",
+    state: "CA",
+    ssn: "XXX-XX-1234",
+    sex: "M",
+    race: "W",
+    flags: ["CAUTION: OFFICER SAFETY", "KNOWN TO CARRY WEAPONS", "LICENSE REVOKED"],
+    history: [
+      { type: "Arrest", date: "2022-03-14", details: "Felony Evasion" },
+      { type: "Arrest", date: "2023-06-02", details: "Felony Evasion" },
+      { type: "Arrest", date: "2023-12-11", details: "Attempted Murder" },
+{ type: "Arrest", date: "2023-12-11", details: "Assualt & Battery" }
+    ]
+  },
+  {
+    id: "DMV-5001",
+    name: "Sarah Knight",
+    dob: "1999-11-02",
+    dl: "K55100921",
+    plate: "TLD9981",
+    state: "AL",
+    sex: "F",
+    race: "B",
+    flags: ["NO VALID DL"],
+    history: [ { type: "Warning", date: "2023-01-19", details: "Broken taillight" } ]
+  }
+];
+
+// ==========================
+// TOKENIZER & SEARCH FILTER
+// ==========================
+function tokenize(input: string) {
+  const tokens: Record<string, string> = {};
+  input.split(/\s+/).forEach(part => {
+    if (!part) return;
+    if (part.includes(":")) {
+      const idx = part.indexOf(":");
+      const key = part.slice(0, idx).toLowerCase();
+      const val = part.slice(idx + 1).toLowerCase();
+      tokens[key] = val;
+    } else {
+      tokens._free = tokens._free ? tokens._free + " " + part.toLowerCase() : part.toLowerCase();
+    }
+  });
+  return tokens;
+}
+
+function matches(record: PersonRecord, tokens: Record<string, string>) {
+  for (const key in tokens) {
+    const q = tokens[key];
+    if (key === "_free") {
+      if (!JSON.stringify(record).toLowerCase().includes(q)) return false;
+    } else if (key === "dl") {
+      if (!record.dl || !record.dl.toLowerCase().includes(q)) return false;
+    } else if (key === "plate") {
+      if (!record.plate || !record.plate.toLowerCase().includes(q)) return false;
+    } else if (key === "name") {
+      if (!record.name || !record.name.toLowerCase().includes(q)) return false;
+    } else if (key === "id") {
+      if (!record.id || !record.id.toLowerCase().includes(q)) return false;
+    } else {
+      // fallback check any stringifiable field
+      const found = Object.values(record).some(v => String(v || "").toLowerCase().includes(q));
+      if (!found) return false;
+    }
+  }
+  return true;
+}
+
+// ==========================
+// UI styles (ui object was missing — defined here)
+// ==========================
+const ui = {
+  body: {
+    backgroundColor: "#0b0b0b",
+    color: "#e6eef6",
+    minHeight: "100vh",
+    fontFamily: "Inter, Roboto, Arial, sans-serif",
+    padding: "12px"
+  } as React.CSSProperties,
+  topBar: {
+    background: "#111",
+    padding: "10px 12px",
+    color: "#dff7ff",
+    fontWeight: 700,
+    borderRadius: 6,
+    marginBottom: 12
+  } as React.CSSProperties,
+  container: { display: "flex", gap: 12 } as React.CSSProperties,
+  searchBar: {
+    width: "250px",
+    padding: "12px",
+    background: "#1a1a1a",
+    color: "#fff",
+    border: "1px solid #333",
+    marginBottom: "15px",
+    fontSize: "14px",
+    marginLeft: "auto",
+    marginRight: "auto",
+    display: "block"
+  } as React.CSSProperties,
+  resultsPane: { width: 520, display: "flex", flexDirection: "column", gap: 10 } as React.CSSProperties,
+  card: { background: "#101214", padding: 12, borderRadius: 6, border: "1px solid #1b2428" } as React.CSSProperties,
+  ncicBlock: { fontFamily: "monospace", background: "#001219", color: "#9ee", padding: 8, borderRadius: 4, marginBottom: 8 } as React.CSSProperties,
+  sectionHeader: { color: "#9e9e9e", marginTop: 8, fontWeight: 700 } as React.CSSProperties,
+  sectionHeaderDanger: { color: "#ff6666", marginTop: 8, fontWeight: 700 } as React.CSSProperties,
+  flag: { background: "#330000", border: "1px solid #550000", padding: 6, borderRadius: 4, color: "#ff6666", marginTop: 6 } as React.CSSProperties,
+  historyRow: { padding: 8, borderBottom: "1px solid #0c1416" } as React.CSSProperties,
+  historyType: { fontWeight: 700 } as React.CSSProperties,
+  historyDate: { color: "#9aa", fontSize: 12 } as React.CSSProperties,
+  historyDetails: { marginTop: 6 } as React.CSSProperties,
+  noResults: { color: "#667", padding: 8 } as React.CSSProperties
+};
+
+// small helper to render a key/value row
+function row(label: string, value?: string | undefined) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
+      <div style={{ color: "#8fb", fontSize: 12 }}>{label}</div>
+      <div style={{ color: "#e6f7ff", fontSize: 13 }}>{value || "-"}</div>
+    </div>
+  );
+}
+
+// ==========================
+// React Component
+// ==========================
+export default function App() {
+  const [query, setQuery] = useState("");
+
+  // localStorage-backed records (persisted)
+  const stored = typeof window !== "undefined" ? localStorage.getItem("ncic_records") : null;
+  const initialData = stored ? JSON.parse(stored) as PersonRecord[] : sampleRecords;
+  const [data, setData] = useState<PersonRecord[]>(initialData);
+
+  // persist on change
+  useEffect(() => {
+    try {
+      localStorage.setItem("ncic_records", JSON.stringify(data));
+    } catch (e) {
+      // ignore storage errors
+      // console.warn("Could not persist records:", e);
+    }
+  }, [data]);
+
+  const filtered = useMemo(() => data.filter(r => matches(r, tokenize(query))), [data, query]);
+
+  return (
+    <div style={ui.body}>
+      <div style={ui.topBar}>CALIFORNIA DOJ / NCIC — MOTOROLA FLEX (Demo)</div>
+
+      <div style={ui.container as React.CSSProperties}>
+        <input
+          style={ui.searchBar}
+          placeholder="Search (plate:6ABC123 name:Smith dl:C1234567)"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+
+        <div style={ui.resultsPane}>
+          {filtered.length === 0 && <div style={ui.noResults}>NO RETURN — NO MATCHING RECORDS</div>}
+
+          {filtered.map((p, idx) => (
+            <div key={p.id || idx} style={ui.card}>
+              {/* CHP/LAPD STYLE HEADER */}
+              <div style={ui.ncicBlock as React.CSSProperties}>
+                {"**** CALIFORNIA DOJ — NCIC PERSON RETURN ****"}
+                <br />{`NAME: ${p.name}`}
+                <br />{`DOB : ${p.dob || ""}`}
+                <br />{`DL  : ${p.dl || ""}`}
+                <br />{`PLATE: ${p.plate || ""}`}
+                <br />{"-------------------------------------------"}
+              </div>
+
+              {/* BASIC INFO */}
+              <div style={ui.sectionHeader}>SUBJECT SUMMARY (FLEX)</div>
+              {row("Name", p.name)}
+              {row("DOB", p.dob)}
+              {row("DL Number", p.dl)}
+              {row("Plate", p.plate)}
+
+              {/* FLAGS */}
+              {p.flags && p.flags.length > 0 && (
+                <>
+                  <div style={ui.sectionHeaderDanger}>ACTIVE LE FLAGS</div>
+                  {p.flags.map((f, i) => (
+                    <div key={i} style={ui.flag}>{f}</div>
+                  ))}
+                </>
+              )}
+
+              {/* HISTORY */}
+              <div style={ui.sectionHeader}>INCIDENT HISTORY</div>
+              {p.history && p.history.length > 0 ? (
+                p.history.map((h, i) => (
+                  <div key={i} style={ui.historyRow}>
+                    <div style={ui.historyType}>{h.type}</div>
+                    <div style={ui.historyDate}>{h.date}</div>
+                    <div style={ui.historyDetails}>{h.details}</div>
+                  </div>
+                ))
+              ) : (
+                <div style={ui.noResults}>NO PRIOR RECORDS</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
