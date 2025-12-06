@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ePCR — Demo (Roleplay)</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --muted:#6b7280; --accent:#0f62fe;
+    --success:#0f9d58; --danger:#e11d48; --shadow: 0 6px 18px rgba(15,22,39,0.06);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,var(--bg),#eef3fb);color:#0f1724}
+  .app{max-width:1200px;margin:28px auto;padding:18px}
+  header{display:flex;align-items:center;gap:18px;margin-bottom:18px}
+  .logo{
+    display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--card);border-radius:10px;box-shadow:var(--shadow)
+  }
+  .logo-mark{width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#6ea8fe);display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+  h1{font-size:18px;margin:0}
+  .top-actions{margin-left:auto;display:flex;gap:8px}
+  button{background:var(--accent);color:white;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid #dbeafe}
+  .layout{display:grid;grid-template-columns:260px 1fr;gap:18px}
+  nav.card, .main .card{background:var(--card);border-radius:12px;padding:12px;box-shadow:var(--shadow)}
+  nav.card{height:calc(100vh - 160px);overflow:auto}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;margin-bottom:6px;cursor:pointer}
+  .nav-item:hover{background:#f1f7ff}
+  .nav-item.active{background:linear-gradient(90deg,#eef6ff,#f8fbff);border-left:4px solid var(--accent);padding-left:8px}
+  .main{display:flex;flex-direction:column;gap:12px}
+  .card{padding:14px}
+  .form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .form-row{display:flex;flex-direction:column;margin-bottom:8px}
+  label{font-size:12px;color:var(--muted);margin-bottom:6px}
+  input[type=text],input[type=date],input[type=time],select,textarea{padding:8px;border:1px solid #e6eef9;border-radius:8px;background:#fbfdff}
+  textarea{min-height:72px;resize:vertical}
+  .section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .small{font-size:13px;color:var(--muted)}
+  .vitals-row{display:flex;gap:8px;flex-wrap:wrap}
+  .vital{background:#f8fafc;padding:8px;border-radius:8px;min-width:96px;display:flex;flex-direction:column}
+  .vital b{font-size:18px}
+  .records-list{max-height:360px;overflow:auto;margin-top:8px}
+  .record-item{display:flex;justify-content:space-between;padding:10px;border-radius:8px;margin-bottom:6px;background:#fbfdff;border:1px solid #eef3ff}
+  .actions{display:flex;gap:8px}
+  .muted{color:var(--muted)}
+  .btn-danger{background:var(--danger)}
+  .btn-outline{background:transparent;border:1px solid #e6eef9;color:var(--muted)}
+  footer{font-size:12px;color:var(--muted);text-align:center;margin-top:18px}
+  @media(max-width:880px){
+    .layout{grid-template-columns:1fr;grid-auto-rows:auto}
+    nav.card{height:auto}
+    .form-grid{grid-template-columns:1fr}
+  }
+  /* Print formatting */
+  @media print {
+    body{background:white}
+    header, nav, .top-actions, .btn, .actions, .records-list {display:none}
+    .app{max-width:800px}
+    .card{box-shadow:none;border:0}
+  }
+</style>
+</head>
+<body>
+<div class="app" role="application" aria-label="ePCR demo - roleplay only">
+  <header>
+    <div class="logo" aria-hidden="false">
+      <div class="logo-mark">eP</div>
+      <div>
+        <h1>ePCR — Demo (roleplay)</h1>
+        <div class="small">Patient Care Report — training / mock data only</div>
+      </div>
+    </div>
+
+    <div class="top-actions" role="toolbar" aria-label="actions">
+      <button id="newBtn" title="New blank PCR">New PCR</button>
+      <button id="saveBtn" title="Save PCR">Save</button>
+      <button id="printBtn" title="Print PCR">Print</button>
+      <button id="exportBtn" class="ghost" title="Export JSON">Export</button>
+      <button id="importBtn" class="ghost" title="Import JSON">Import</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="card" aria-label="navigation">
+      <div class="small" style="margin-bottom:8px">Sections</div>
+      <div class="nav-item active" data-section="dispatch">Dispatch Info</div>
+      <div class="nav-item" data-section="patient">Patient Details</div>
+      <div class="nav-item" data-section="assessment">Assessment</div>
+      <div class="nav-item" data-section="vitals">Vitals</div>
+      <div class="nav-item" data-section="treatments">Treatments</div>
+
+      <div style="margin-top:12px" class="small">Saved Reports</div>
+      <div class="records-list" id="savedList" aria-live="polite"></div>
+
+      <div style="margin-top:12px" class="small">Quick Actions</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="loadSample" class="btn-outline">Load Sample</button>
+        <button id="clearAll" class="btn-danger">Delete All</button>
+      </div>
+    </nav>
+
+    <main class="main" aria-live="polite">
+      <section class="card" id="dispatchSection" data-section="dispatch">
+        <div class="section-title">
+          <div><strong>Dispatch / Incident</strong><div class="small">Call & scene info</div></div>
+          <div class="small">Record ID: <span id="recordId">—</span></div>
+        </div>
+        <div class="form-grid" role="form" aria-label="dispatch form">
+          <div class="form-row">
+            <label for="callNumber">Call Number</label>
+            <input id="callNumber" type="text" placeholder="e.g. 2025-000123" />
+          </div>
+          <div class="form-row">
+            <label for="dispatchCode">Dispatch Code / Chief Complaint</label>
+            <input id="dispatchCode" type="text" placeholder="Chest pain, breathing difficulty..." />
+          </div>
+
+          <div class="form-row">
+            <label for="dispatchDate">Dispatch Date</label>
+            <input id="dispatchDate" type="date" />
+          </div>
+          <div class="form-row">
+            <label for="dispatchTime">Dispatch Time</label>
+            <input id="dispatchTime" type="time" />
+          </div>
+
+          <div class="form-row">
+            <label for="location">Location</label>
+            <input id="location" type="text" placeholder="123 Main St, Town, ST" />
+          </div>
+          <div class="form-row">
+            <label for="crew">Unit / Crew</label>
+            <select id="crew" aria-label="unit selector">
+              <option>Tilden-1</option>
+              <option>Tilden-2</option>
+              <option>Tilden-3</option>
+              <option selected>Tilden-18</option>
+              <option>Engine 1</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label for="sceneSafety">Scene Safety</label>
+            <select id="sceneSafety">
+              <option>Safe</option>
+              <option>Hazardous</option>
+              <option>Unknown</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="patientCount">Number of patients</label>
+            <input id="patientCount" type="text" placeholder="1" />
+          </div>
+
+          <div class="form-row" style="grid-column:1 / -1">
+            <label for="notesDispatch">Dispatch Notes</label>
+            <textarea id="notesDispatch" placeholder="Narrative / CAD notes..."></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="patientSection" style="display:none" data-section="patient">
+        <div class="section-title">
+          <div><strong>Patient</strong><div class="small">Demographics & basic info</div></div>
+          <div class="small" id="ageSex">Age / Sex: —</div>
+        </div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="lastName">Last name</label>
+            <input id="lastName" type="text" />
+          </div>
+          <div class="form-row">
+            <label for="firstName">First name</label>
+            <input id="firstName" type="text" />
+          </div>
+
+          <div class="form-row">
+            <label for="dob">Date of Birth</label>
+            <input id="dob" type="date" />
+          </div>
+          <div class="form-row">
+            <label for="sex">Sex</label>
+            <select id="sex"><option>Male</option><option>Female</option><option>Other</option></select>
+          </div>
+
+          <div class="form-row">
+            <label for="mrn">Patient ID / MRN</label>
+            <input id="mrn" type="text" />
+          </div>
+          <div class="form-row">
+            <label for="phone">Phone</label>
+            <input id="phone" type="text" />
+          </div>
+
+          <div class="form-row" style="grid-column:1 / -1">
+            <label for="history">Relevant Medical History / Allergies / Meds</label>
+            <textarea id="history" placeholder="HTN, Diabetes, Allergic to Penicillin..."></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="assessmentSection" style="display:none" data-section="assessment">
+        <div class="section-title">
+          <div><strong>Assessment</strong><div class="small">Primary / Secondary assessment & narrative</div></div>
+          <div class="small">SAMPLE/OPQRST</div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="primaryComplaint">Primary complaint</label>
+            <input id="primaryComplaint" type="text" />
+          </div>
+          <div class="form-row">
+            <label for="gcs">GCS</label>
+            <input id="gcs" type="text" placeholder="15" />
+          </div>
+
+          <div class="form-row">
+            <label for="breathSounds">Breath sounds</label>
+            <input id="breathSounds" type="text" />
+          </div>
+          <div class="form-row">
+            <label for="skin">Skin</label>
+            <input id="skin" type="text" placeholder="Warm/dry/pale" />
+          </div>
+
+          <div style="grid-column:1 / -1" class="form-row">
+            <label for="narrative">Narrative / Assessment Notes</label>
+            <textarea id="narrative"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="vitalsSection" style="display:none" data-section="vitals">
+        <div class="section-title">
+          <div><strong>Vitals</strong><div class="small">Enter and track multiple sets</div></div>
+          <div><span class="small">Last update: <span id="vitalsLast">—</span></span></div>
+        </div>
+
+        <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:10px">
+          <div style="display:flex;gap:8px;align-items:center" aria-label="vitals input">
+            <label class="muted" for="sbp">SBP</label>
+            <input id="sbp" type="text" placeholder="120" style="width:64px" />
+            <label class="muted" for="hr">HR</label>
+            <input id="hr" type="text" placeholder="78" style="width:64px" />
+            <label class="muted" for="rr">RR</label>
+            <input id="rr" type="text" placeholder="16" style="width:64px" />
+            <label class="muted" for="sp02">SpO₂</label>
+            <input id="sp02" type="text" placeholder="98" style="width:64px" />
+            <label class="muted" for="temp">Temp</label>
+            <input id="temp" type="text" placeholder="98.6" style="width:64px" />
+          </div>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <input id="vitalTime" type="time" />
+            <button id="addVitals">Add Vitals</button>
+          </div>
+        </div>
+
+        <div class="vitals-row" id="vitalsList" aria-live="polite"></div>
+      </section>
+
+      <section class="card" id="treatmentsSection" style="display:none" data-section="treatments">
+        <div class="section-title">
+          <div><strong>Treatments & Procedures</strong><div class="small">Interventions, meds, response</div></div>
+          <div class="small">Document meds and responses</div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="procedures">Procedures / Interventions</label>
+            <textarea id="procedures" placeholder="CPR, BVM, OPA, Splint..."></textarea>
+          </div>
+          <div class="form-row">
+            <label for="meds">Medications given</label>
+            <textarea id="meds" placeholder="Aspirin 324 mg PO, Oxygen via NRB 15 LPM..."></textarea>
+          </div>
+
+          <div class="form-row" style="grid-column:1 / -1">
+            <label for="response">Response to treatment</label>
+            <textarea id="response" placeholder="Pain improved, RR normalized..."></textarea>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <label class="small" for="signature">Provider signature (type name)</label>
+          <input id="signature" type="text" placeholder="Jordan Kingly" style="width:220px" />
+          <div style="margin-left:auto" class="muted small">Signed at: <span id="signedAt">—</span></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>Demo ePCR — for roleplay / training only. Not connected to any vendor system.</footer>
+</div>
+
+<script>
+/* ePCR-like client logic (local only) */
+const sections = ['dispatch','patient','assessment','vitals','treatments'];
+const navItems = document.querySelectorAll('.nav-item');
+const sectionEls = {};
+sections.forEach(s=>{
+  sectionEls[s]=document.querySelector('[data-section="'+s+'Section"]') || document.querySelector('#'+s+'Section');
+});
+document.querySelectorAll('[data-section]').forEach(el=>{
+  const sec = el.getAttribute('data-section');
+  // nothing
+});
+
+navItems.forEach(item=>{
+  item.addEventListener('click', ()=> {
+    navItems.forEach(n=>n.classList.remove('active'));
+    item.classList.add('active');
+    const sec = item.getAttribute('data-section');
+    // show/hide
+    sections.forEach(s=>{
+      const el = document.querySelector('#'+s+'Section');
+      if(!el) return;
+      el.style.display = (s===sec ? 'block' : 'none');
+    });
+  });
+});
+
+// helpers
+const $ = id => document.getElementById(id);
+const makeId = ()=> 'PCR-'+Date.now().toString(36);
+
+// Save / Load store
+const STORAGE_KEY = 'epcr_demo_records_v1';
+function loadRecords(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){return []}
+}
+function saveRecords(records){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  renderSavedList();
+}
+
+function gatherForm(){
+  const record = {
+    id: $('recordId').textContent || makeId(),
+    callNumber: $('callNumber').value,
+    dispatchCode: $('dispatchCode').value,
+    dispatchDate: $('dispatchDate').value,
+    dispatchTime: $('dispatchTime').value,
+    location: $('location').value,
+    crew: $('crew').value,
+    sceneSafety: $('sceneSafety').value,
+    patientCount: $('patientCount').value,
+    notesDispatch: $('notesDispatch').value,
+    lastName: $('lastName').value,
+    firstName: $('firstName').value,
+    dob: $('dob').value,
+    sex: $('sex').value,
+    mrn: $('mrn').value,
+    phone: $('phone').value,
+    history: $('history').value,
+    primaryComplaint: $('primaryComplaint').value,
+    gcs: $('gcs').value,
+    breathSounds: $('breathSounds').value,
+    skin: $('skin').value,
+    narrative: $('narrative').value,
+    vitals: JSON.parse(localStorage.getItem('vitals_' + ($('recordId').textContent || 'current')) || '[]'),
+    procedures: $('procedures').value,
+    meds: $('meds').value,
+    response: $('response').value,
+    signature: $('signature').value,
+    signedAt: $('signedAt').textContent,
+    updatedAt: new Date().toISOString()
+  };
+  return record;
+}
+
+function fillForm(record){
+  if(!record) return;
+  $('recordId').textContent = record.id || makeId();
+  $('callNumber').value = record.callNumber || '';
+  $('dispatchCode').value = record.dispatchCode || '';
+  $('dispatchDate').value = record.dispatchDate || '';
+  $('dispatchTime').value = record.dispatchTime || '';
+  $('location').value = record.location || '';
+  $('crew').value = record.crew || '';
+  $('sceneSafety').value = record.sceneSafety || 'Safe';
+  $('patientCount').value = record.patientCount || '';
+  $('notesDispatch').value = record.notesDispatch || '';
+  $('lastName').value = record.lastName || '';
+  $('firstName').value = record.firstName || '';
+  $('dob').value = record.dob || '';
+  $('sex').value = record.sex || 'Male';
+  $('mrn').value = record.mrn || '';
+  $('phone').value = record.phone || '';
+  $('history').value = record.history || '';
+  $('primaryComplaint').value = record.primaryComplaint || '';
+  $('gcs').value = record.gcs || '';
+  $('breathSounds').value = record.breathSounds || '';
+  $('skin').value = record.skin || '';
+  $('narrative').value = record.narrative || '';
+  localStorage.setItem('vitals_' + ($('recordId').textContent || 'current'), JSON.stringify(record.vitals || []));
+  renderVitals();
+  $('procedures').value = record.procedures || '';
+  $('meds').value = record.meds || '';
+  $('response').value = record.response || '';
+  $('signature').value = record.signature || '';
+  $('signedAt').textContent = record.signedAt || '—';
+  updateAgeSex();
+}
+
+function updateAgeSex(){
+  const dob = $('dob').value;
+  const sex = $('sex').value;
+  if(dob){
+    const d = new Date(dob);
+    const now = new Date();
+    let age = now.getFullYear() - d.getFullYear();
+    const m = now.getMonth() - d.getMonth();
+    if(m<0 || (m===0 && now.getDate() < d.getDate())) age--;
+    $('ageSex').textContent = age + ' / ' + sex;
+  } else {
+    $('ageSex').textContent = '—';
+  }
+}
+
+$('dob').addEventListener('change', updateAgeSex);
+$('sex').addEventListener('change', updateAgeSex);
+
+// Vitals handling
+function renderVitals(){
+  const id = $('recordId').textContent || 'current';
+  const vitals = JSON.parse(localStorage.getItem('vitals_' + id) || '[]');
+  const list = $('vitalsList');
+  list.innerHTML = '';
+  if(!vitals.length){ $('vitalsLast').textContent = '—'; return; }
+  $('vitalsLast').textContent = new Date(vitals[vitals.length-1].ts).toLocaleString();
+  vitals.slice().reverse().forEach((v,idx)=>{
+    const el = document.createElement('div');
+    el.className='vital';
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><small class="muted">'+ new Date(v.ts).toLocaleTimeString() +'</small><button class="btn-outline" style="padding:4px 6px" data-index="'+(vitals.length-1-idx)+'">Del</button></div>'
+      + '<div style="display:flex;gap:8px;margin-top:6px"><div><small class="muted">SBP</small><div><b>'+v.sbp+'</b></div></div>'
+      + '<div><small class="muted">HR</small><div><b>'+v.hr+'</b></div></div>'
+      + '<div><small class="muted">RR</small><div><b>'+v.rr+'</b></div></div>'
+      + '<div><small class="muted">SpO₂</small><div><b>'+v.sp02+'</b></div></div>'
+      + '<div><small class="muted">Temp</small><div><b>'+v.temp+'</b></div></div></div>';
+    list.appendChild(el);
+    el.querySelector('button')?.addEventListener('click', ()=>{
+      const id = $('recordId').textContent || 'current';
+      const vitArr = JSON.parse(localStorage.getItem('vitals_' + id) || '[]');
+      vitArr.splice(parseInt(el.querySelector('button').getAttribute('data-index')),1);
+      localStorage.setItem('vitals_' + id, JSON.stringify(vitArr));
+      renderVitals();
+    });
+  });
+}
+
+$('addVitals').addEventListener('click', ()=>{
+  const id = $('recordId').textContent || makeId();
+  $('recordId').textContent = id;
+  const v = {
+    ts: new Date().toISOString(),
+    sbp: $('sbp').value || '',
+    hr: $('hr').value || '',
+    rr: $('rr').value || '',
+    sp02: $('sp02').value || '',
+    temp: $('temp').value || '',
+    notedTime: $('vitalTime').value || ''
+  };
+  const key = 'vitals_' + id;
+  const arr = JSON.parse(localStorage.getItem(key) || '[]');
+  arr.push(v);
+  localStorage.setItem(key, JSON.stringify(arr));
+  // clear inputs
+  $('sbp').value='';$('hr').value='';$('rr').value='';$('sp02').value='';$('temp').value='';
+  renderVitals();
+});
+
+// Save / new / print
+$('saveBtn').addEventListener('click', ()=>{
+  const record = gatherForm();
+  const records = loadRecords();
+  const idx = records.findIndex(r=>r.id === record.id);
+  if(idx >= 0) records[idx] = record; else records.push(record);
+  saveRecords(records);
+  alert('Saved to local storage (roleplay/demo)');
+});
+
+$('newBtn').addEventListener('click', ()=>{
+  // new blank
+  $('recordId').textContent = makeId();
+  localStorage.removeItem('vitals_' + $('recordId').textContent);
+  const fields = ['callNumber','dispatchCode','dispatchDate','dispatchTime','location','crew','sceneSafety','patientCount','notesDispatch',
+  'lastName','firstName','dob','sex','mrn','phone','history','primaryComplaint','gcs','breathSounds','skin','narrative',
+  'procedures','meds','response','signature'];
+  fields.forEach(f=>{ if($(f)) $(f).value = ''; });
+  $('signedAt').textContent = '—';
+  renderVitals();
+});
+
+$('printBtn').addEventListener('click', ()=>{
+  // Before print, inject the form values into a simple printable overlay view
+  window.print();
+});
+
+// Saved list render
+function renderSavedList(){
+  const list = $('savedList');
+  const records = loadRecords();
+  list.innerHTML = '';
+  if(!records.length){ list.innerHTML = '<div class="muted small">No saved records</div>'; return; }
+  records.slice().reverse().forEach(r=>{
+    const el = document.createElement('div');
+    el.className='record-item';
+    el.innerHTML = '<div><strong>' + (r.callNumber || r.firstName + ' ' + (r.lastName||'')) + '</strong><div class="small muted">' + (r.dispatchDate ? new Date(r.dispatchDate).toLocaleDateString() : r.updatedAt ? new Date(r.updatedAt).toLocaleString() : '') + '</div></div>'
+      + '<div class="actions"><button class="ghost" data-id="'+r.id+'">Load</button><button class="btn-outline" data-id="'+r.id+'">Export</button><button class="btn-danger" data-id="'+r.id+'">Delete</button></div>';
+    list.appendChild(el);
+    el.querySelector('.ghost').addEventListener('click', ()=>{ fillForm(r); });
+    el.querySelector('.btn-outline').addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify(r,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download = (r.id || 'pcr') + '.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
+    el.querySelector('.btn-danger').addEventListener('click', ()=>{
+      if(!confirm('Delete this saved record?')) return;
+      const recs = loadRecords().filter(x=>x.id !== r.id);
+      saveRecords(recs);
+    });
+  });
+}
+
+// Export / import
+$('exportBtn').addEventListener('click', ()=>{
+  const recs = loadRecords();
+  const blob = new Blob([JSON.stringify(recs,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download = 'epcr_records.json'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+$('importBtn').addEventListener('click', ()=>{
+  const input = document.createElement('input');
+  input.type='file'; input.accept='application/json';
+  input.addEventListener('change',(e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = ev => {
+      try{
+        const imported = JSON.parse(ev.target.result);
+        if(Array.isArray(imported)){
+          saveRecords(imported.concat(loadRecords()));
+        } else if(imported && imported.id){
+          const recs = loadRecords(); recs.push(imported); saveRecords(recs);
+        } else alert('JSON not recognized.');
+      }catch(err){ alert('Invalid JSON file'); }
+    };
+    r.readAsText(f);
+  });
+  input.click();
+});
+
+// sample loader and delete all
+$('loadSample').addEventListener('click', ()=>{
+  const sample = {
+    id: makeId(),
+    callNumber: '2025-000867',
+    dispatchCode: 'Chest pain',
+    dispatchDate: new Date().toISOString().slice(0,10),
+    dispatchTime: new Date().toTimeString().slice(0,5),
+    location: '123 County Rd, Smalltown, MS',
+    crew: 'Tilden-18',
+    sceneSafety: 'Safe',
+    patientCount: '1',
+    notesDispatch: 'ALS response requested by caller',
+    lastName: 'Doe',
+    firstName: 'John',
+    dob: '1965-04-10',
+    sex: 'Male',
+    mrn: 'MRN-001234',
+    phone: '555-1234',
+    history: 'HTN, takes lisinopril',
+    primaryComplaint: 'Chest pressure',
+    gcs: '15',
+    breathSounds: 'Clear',
+    skin: 'Warm/dry',
+    narrative: 'Patient reports 30 minutes of chest pressure, described as tightness...',
+    vitals: [
+      {ts:new Date().toISOString(), sbp:150, hr:98, rr:18, sp02:96, temp:98.6}
+    ],
+    procedures: '12-lead obtained; O2 via nasal cannula',
+    meds: 'Aspirin 324 mg PO',
+    response: 'Slight improvement in pain after ASA',
+    signature: 'Jordan Kingly',
+    signedAt: new Date().toLocaleString(),
+    updatedAt: new Date().toISOString()
+  };
+  const recs = loadRecords(); recs.push(sample); saveRecords(recs);
+  alert('Sample loaded to saved records.');
+});
+$('clearAll').addEventListener('click', ()=>{
+  if(!confirm('Delete ALL saved records?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  // remove vitals keys too (best effort)
+  Object.keys(localStorage).forEach(k=>{ if(k.startsWith('vitals_')) localStorage.removeItem(k);});
+  renderSavedList(); renderVitals();
+});
+
+// delete individual from saved list handled above
+
+// init
+(function init(){
+  // set a record id if empty
+  if(!$('recordId').textContent || $('recordId').textContent.trim()==='—') $('recordId').textContent = makeId();
+  renderSavedList();
+  renderVitals();
+  // wire signature time
+  $('signature').addEventListener('change', ()=>{
+    $('signedAt').textContent = new Date().toLocaleString();
+  });
+  // keyboard shortcut: Ctrl+S to save
+  window.addEventListener('keydown',(e)=>{
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); $('saveBtn').click(); }
+  });
+})();
+
+</script>
+</body>
+</html>
